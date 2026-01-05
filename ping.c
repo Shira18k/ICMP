@@ -39,6 +39,7 @@ int main(int argc, char *argv[])
     int times_to_run = 1;
     int flood_mode = 0;
     int seq_num = 0;
+
     while((opt = getopt(argc,argv, "a:c:f")) != -1)
     {
         switch(opt)
@@ -120,28 +121,45 @@ int main(int argc, char *argv[])
         //Send the created package using the prepared data
 
         sendto(sock, &icmp, sizeof(icmp), 0, (struct sockaddr *)&dest_in, sizeof(dest_in));
-        seq_num ++;
+        // seq_num ++;
+        // count ++;
         
-
-        count ++;
-        if (flood_mode == 0) {
-            sleep(1);
-        }
         //Get the reply from the server
-        int result = poll(&pfd, 1, timeout);
-
-        if (result > 0) 
+        int result = poll(&pfd, 1, timeout); 
+        
+        if (result > 0)  // there is an information that come from  the socket
         {
             gettimeofday(&end, NULL);
+            //For knowing the ip and more inf of the reply
+            char buffer[1024];
+            struct sockaddr_in from_addr;
+            socklen_t addr_len = sizeof(from_addr);
+
+            int bytes_received = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr *)&from_addr, &addr_len); // put the inf in the buffer 
+            if(bytes_received > 0)
+            {
+            
+                // Casting for the addr of the buffer to pointer on the IP struct 
+                // Means that the inf in the addr of the buffer like the ip struct
+                struct iphdr *ip = (struct iphdr *)buffer;
+                int ttl = ip->ttl; // because the struct on linux is known where ttl in the sruct and "jump" by  -> to there 
+
+                // rtt
+                double rtt = (double)(end.tv_sec - start.tv_sec) * 1000.0 + (double)(end.tv_usec-start.tv_usec)/ 1000.0;
+
+                //Print the data about the recieved package 
+                printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.3f ms\n", 
+                bytes_received, inet_ntoa(from_addr.sin_addr), seq_num, ttl, rtt);
+            }
         }
-        // rtt
-        double rtt = (double)(end.tv_sec - start.tv_sec) * 1000.0 + (double)(end.tv_usec-start.tv_usec)/ 1000
-
-        //Print the data about the recieved package 
-        printf("")
         
-
-
+        // Just in the end 
+        seq_num++;
+        count++;
+        // the "sleep" part by flag f 
+        if (flood_mode == 0 && count < times_to_run) 
+        {
+            sleep(1);
+        }
     }
-
 }
