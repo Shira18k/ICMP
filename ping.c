@@ -33,12 +33,39 @@ unsigned short int calculate_checksum(void *data, unsigned int bytes)
 
 int main(int argc, char *argv[])
 {
+    
+
     //FLAG IMPLEMENTATION
     int opt;
     char *ip_addr = NULL;
     int times_to_run = 1;
     int flood_mode = 0;
     int seq_num = 0;
+
+    //STATISTICS
+    int packages_transmitted = 0;
+    int pakages_recieved = 0;
+    double max_rtt, sum_rtt = 0;
+    double min_rtt = 999.0; // big num 
+    double final_runtime = 0;
+    
+    void display_statistics()
+    {
+        printf("The session statistics:\n");
+        printf("Total packages sent: %d\n", packages_transmitted);
+        printf("Total packages recieved: %d\n", pakages_recieved);
+        printf("The average RTT is %f\n", sum_rtt/packages_transmitted);
+        printf("Maximum session RTT: %f\n", max_rtt);
+        printf("Minimum session RTT: %f\n", min_rtt);
+        printf("Total run time: %f\n", final_runtime);
+    }
+
+    //SIGNAL IMPLEMENTATION
+    signal(SIGINT, display_statistics);
+
+    //Create a timeeval structure to measure time 
+    struct timeval s_runtime, e_runtime;
+    gettimeofday(&s_runtime, NULL);
 
     while((opt = getopt(argc,argv, "a:c:f")) != -1)
     {
@@ -59,14 +86,6 @@ int main(int argc, char *argv[])
         }
         
     }
-    
-    // void display_statistics(int signum)
-    // {
-    //     return 0;
-
-    // }
-    // signal(SIGINT, display_statistics);
-
 
     //Creating a raw socket
     int sock  = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
@@ -119,10 +138,8 @@ int main(int argc, char *argv[])
         gettimeofday(&start, NULL);
 
         //Send the created package using the prepared data
-
         sendto(sock, &icmp, sizeof(icmp), 0, (struct sockaddr *)&dest_in, sizeof(dest_in));
-        // seq_num ++;
-        // count ++;
+        packages_transmitted++;
         
         //Get the reply from the server
         int result = poll(&pfd, 1, timeout); 
@@ -138,7 +155,8 @@ int main(int argc, char *argv[])
             int bytes_received = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr *)&from_addr, &addr_len); // put the inf in the buffer 
             if(bytes_received > 0)
             {
-            
+                // package recieved +1
+                pakages_recieved++; 
                 // Casting for the addr of the buffer to pointer on the IP struct 
                 // Means that the inf in the addr of the buffer like the ip struct
                 struct iphdr *ip = (struct iphdr *)buffer;
@@ -146,11 +164,23 @@ int main(int argc, char *argv[])
 
                 // rtt
                 double rtt = (double)(end.tv_sec - start.tv_sec) * 1000.0 + (double)(end.tv_usec-start.tv_usec)/ 1000.0;
+                sum_rtt = sum_rtt + rtt;
 
+                if (rtt < min_rtt){
+                    min_rtt = rtt;
+                }
+                if(rtt > max_rtt){
+                    max_rtt = rtt;
+                }
                 //Print the data about the recieved package 
                 printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.3f ms\n", 
                 bytes_received, inet_ntoa(from_addr.sin_addr), seq_num, ttl, rtt);
             }
+        }
+        else
+        {
+            perror("Not arrived");
+            exit(0);
         }
         
         // Just in the end 
@@ -161,5 +191,14 @@ int main(int argc, char *argv[])
         {
             sleep(1);
         }
+        
+        gettimeofday(&e_runtime, NULL);
+        //Calculate the final runtime
+
+        final_runtime = (double)(e_runtime.tv_sec - s_runtime.tv_sec) * 1000.0 + (double)(e_runtime.tv_usec-s_runtime.tv_usec)/ 1000.0;
+        
     }
+    
+    display_statistics();
+   
 }
