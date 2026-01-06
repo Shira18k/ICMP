@@ -9,6 +9,8 @@
 #include <netinet/ip_icmp.h>
 #include <netinet/ip.h>
 
+#define PACKET_SIZE 4096
+
 // Calculate checksum
 unsigned short int calculate_checksum(void *data, unsigned int bytes) 
 {
@@ -64,6 +66,13 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+    int one = 1;
+    if (setsockopt(sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) {
+        perror("setsockopt IP_HDRINCL failed");
+        close(sock);
+        exit(1);
+    }
+
     struct sockaddr_in dest_in;
     memset(&dest_in, 0, sizeof(dest_in));
     dest_in.sin_family = AF_INET;
@@ -77,6 +86,14 @@ int main(int argc, char *argv[])
     }
 
     printf("traceroute to %s, 30 hops max\n", inet_ntoa(dest_in.sin_addr));
+
+    int recv_sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    if(recv_sock < 0)
+    {
+        perror("Receive socket creation failed");
+        close(sock);
+        exit(1);
+    }
 
     // Build the reply structure
     struct pollfd pfd;
@@ -100,24 +117,41 @@ int main(int argc, char *argv[])
 
         printf("%2d  ", ttl);
         int received_count = 0;
-
+        
         // Send 3 similar packages
         for (int i = 0; i < 3; i++) 
         {
+            char packet[PACKET_SIZE];
+            memset(packet, 0, PACKET_SIZE);
+            struct iphdr *ip_header = (struct iphdr *)packet;
+            ip_header->ihl = 5;
+            ip_header->version = 4;
+            ip_header->tos = 0;
+            ip_header->tot_len = sizeof(struct iphdr) + sizeof(struct icmphdr);
+            ip_header->id = htons(getpid() + ttl);
+            ip_header->frag_off = 0;
+            ip_header->ttl = ttl;  // Set TTL manually
+            ip_header->protocol = IPPROTO_ICMP;
+            ip_header->check = 0;
+            ip_header->saddr = inet_addr("0.0.0.0");  // Source (kernel can fill)
+            ip_header->daddr = dest_in.sin_addr.s_addr;
+
+            ip_header->check = calculate_checksum((unsigned short *)ip_header, sizeof(struct iphdr));
+
             // Build the ICMP packet for each iteration
-            struct icmphdr icmp;
-            memset(&icmp, 0, sizeof(icmp));
-            icmp.type = ICMP_ECHO;
-            icmp.code = 0;
-            icmp.un.echo.id = getpid();
-            icmp.un.echo.sequence = ttl * 3 + i;
-            icmp.checksum = 0;
-            icmp.checksum = calculate_checksum(&icmp, sizeof(struct icmphdr));
+            struct icmphdr *icmp = (struct icmphdr *)(packet + sizeof(struct iphdr));
+            memset(icmp, 0, sizeof(struct icmphdr));
+            icmp->type = ICMP_ECHO;
+            icmp->code = 0;
+            icmp->un.echo.id = getpid();
+            icmp->un.echo.sequence = ttl * 3 + i;
+            icmp->checksum = 0;
+            icmp->checksum = calculate_checksum(icmp, sizeof(struct icmphdr));
 
             // Set the starting point of current rtt
             gettimeofday(&start, NULL);
             
-            if (sendto(sock, &icmp, sizeof(icmp), 0, (struct sockaddr *)&dest_in, sizeof(dest_in)) < 0) {
+            if (sendto(sock, packet, ip_header->tot_len, 0, (struct sockaddr *)&dest_in, sizeof(dest_in)) < 0) {
                 perror("sendto failed");
                 continue;
             }
@@ -160,9 +194,8 @@ int main(int argc, char *argv[])
             else if (result == 0)
             {
                 // Timeout
-                if (i == 0) {
-                    printf("* ");
-                }
+                printf("* ");
+                    
             }
             else
             {
@@ -182,5 +215,6 @@ int main(int argc, char *argv[])
     }
 
     close(sock);
+    close(recv_sock);
     return 0;
 }
