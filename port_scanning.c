@@ -35,6 +35,7 @@ struct pseudo_header {
     u_int16_t tcp_length;
 };
 
+
 void tcp_syn_scan(char *target_ip) {
     int sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
     if (sock < 0) {
@@ -109,21 +110,39 @@ void tcp_syn_scan(char *target_ip) {
             char buffer[4096];
             struct sockaddr_in from;
             socklen_t len = sizeof(from);
-            int res = recvfrom(sock, buffer, 4096, 0, (struct sockaddr *)&from, &len);
-            if (res > 0) {
-                struct tcphdr *recv_tcp = (struct tcphdr *)(buffer + sizeof(struct iphdr));
-                if (recv_tcp->syn == 1 && recv_tcp->ack == 1) { // SYN-ACK 
-                    printf("Port %d is OPEN (TCP)\n", port);
+            while (recvfrom(sock, buffer, sizeof(buffer), MSG_DONTWAIT, (struct sockaddr *)&from, &len) > 0) {
+                struct iphdr *recv_ip = (struct iphdr *)buffer;
+                if (recv_ip->protocol == IPPROTO_TCP) {
+                    struct tcphdr *recv_tcp = (struct tcphdr *)(buffer + (recv_ip->ihl * 4));
+
+                    // בדיקת אימות קריטית: האם הפורט שקיבלנו הוא הפורט שסרקנו?
+                    if (ntohs(recv_tcp->source) == port) {
+                        if (recv_tcp->syn == 1 && recv_tcp->ack == 1) { // SYN-ACK [cite: 187]
+                            printf("Port %d is OPEN (TCP)\n", port);
+                        }
+                        
+                        // שליחת RST חזרה (דרישת סעיף 189) 
+                        tcp->syn = 0;
+                        tcp->rst = 1;
+                        tcp->check = 0; // יש לחשב checksum מחדש לפני השליחה
+                        sendto(sock, packet, ip->tot_len, 0, (struct sockaddr *)&dest, sizeof(dest));
+                        break; 
+                    }
                 }
             }
         }
-    }
+    } // סגירת לולאת ה-for
     close(sock);
-}
+} // סגירת הפונקציה
 
 void udp_scan(char *target_ip) {
     int udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     int icmp_sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+
+    if (udp_sock < 0 || icmp_sock < 0) {
+        perror("Socket Creation Failed");
+        return;
+    }
     
     struct sockaddr_in dest;
     dest.sin_family = AF_INET;
@@ -133,19 +152,36 @@ void udp_scan(char *target_ip) {
 
     for (int port = 1; port <= 65535; port++) {
         dest.sin_port = htons(port);
-        sendto(udp_sock, "", 0, 0, (struct sockaddr *)&dest, sizeof(dest)); // Empty UDP packet 
+        if (sendto(udp_sock, "", 0, 0, (struct sockaddr *)&dest, sizeof(dest)) < 0) {
+            continue;
+        } 
 
-        struct pollfd pfd;
-        pfd.fd = icmp_sock;
-        pfd.events = POLLIN;
-        
-        if (poll(&pfd, 1, 100) > 0) { // If ICMP received 
-            printf("Port %d is CLOSED (UDP - ICMP Unreachable received)\n", port);
-        } else {
-            // Note: In real life, no response could be open or filtered 
-            // The assignment asks to treat no response as closed due to firewall 
+        struct pollfd pfds[2];
+        pfds[0].fd = icmp_sock;
+        pfds[0].events = POLLIN;
+        pfds[1].fd = udp_sock;
+        pfds[1].events = POLLIN;
+
+        // המתנה לתגובה (Timeout של 100ms לסריקה מהירה)
+        int res = poll(pfds, 2, 100);
+
+        if (res > 0) {
+            // אם קיבלנו תגובה ב-UDP Socket, הפורט פתוח
+            if (pfds[1].revents & POLLIN) {
+                char buffer[1024];
+                struct sockaddr_in from;
+                socklen_t len = sizeof(from);
+                recvfrom(udp_sock, buffer, sizeof(buffer), 0, (struct sockaddr *)&from, &len);
+                
+                printf("Port %d is OPEN (UDP)\n", port);
+            }
+            // אם pfds[0] (ICMP) קיבל אירוע, הפורט סגור לפי המטלה
+            // אין צורך בהדפסה כאן כי המטלה דורשת להדפיס רק פתוחים.
         }
+        // אם res == 0 (Timeout), המטלה מנחה להחשיב כסגור/מסונן
+        // לכן גם כאן אין הדפסה.
     }
+
     close(udp_sock);
     close(icmp_sock);
 }

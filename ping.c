@@ -9,7 +9,6 @@
 #include <netinet/ip_icmp.h>
 #include <bits/getopt_core.h>
 
-
 unsigned short int calculate_checksum(void *data, unsigned int bytes) 
 {
     unsigned short int *data_pointer = (unsigned short int *)data;
@@ -27,14 +26,8 @@ unsigned short int calculate_checksum(void *data, unsigned int bytes)
         total_sum = (total_sum & 0xFFFF) + (total_sum >> 16);
     return (~((unsigned short int)total_sum));
 }
-
-
-
-
 int main(int argc, char *argv[])
 {
-    
-
     //FLAG IMPLEMENTATION
     int opt;
     char *ip_addr = NULL;
@@ -94,7 +87,7 @@ int main(int argc, char *argv[])
         perror("Socket creation failed");
         exit(1);
     }
-    //The destination address structure
+    //The destination address structureS
     struct sockaddr_in dest_in;
     
     dest_in.sin_family = AF_INET;
@@ -107,7 +100,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
     dest_in.sin_port = 0;
-    //Final address inside the structure
+    //Final address inside the structureS
 
     //Create a reply structure
     struct pollfd pfd;
@@ -159,9 +152,7 @@ int main(int argc, char *argv[])
                 pakages_recieved++; 
                 // Casting for the addr of the buffer to pointer on the IP struct 
                 // Means that the inf in the addr of the buffer like the ip struct
-                struct iphdr *ip = (struct iphdr *)buffer;
-                int ttl = ip->ttl; // because the struct on linux is known where ttl in the sruct and "jump" by  -> to there 
-
+                
                 // rtt
                 double rtt = (double)(end.tv_sec - start.tv_sec) * 1000.0 + (double)(end.tv_usec-start.tv_usec)/ 1000.0;
                 sum_rtt = sum_rtt + rtt;
@@ -173,8 +164,8 @@ int main(int argc, char *argv[])
                     max_rtt = rtt;
                 }
                 //Print the data about the recieved package 
-                printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.3f ms\n", 
-                bytes_received, inet_ntoa(from_addr.sin_addr), seq_num, ttl, rtt);
+                printf("%d bytes from %s: icmp_seq=%d time=%.3f ms\n", 
+                bytes_received, inet_ntoa(from_addr.sin_addr), seq_num, rtt);
             }
         }
         else
