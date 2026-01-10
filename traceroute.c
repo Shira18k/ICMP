@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
             gettimeofday(&start, NULL);
             
             if (sendto(sock, packet, ip_header->tot_len, 0, (struct sockaddr *)&dest_in, sizeof(dest_in)) < 0) {
-                perror("sendto failed");
+                printf("* ");
                 continue;
             }
 
@@ -173,8 +173,7 @@ int main(int argc, char *argv[])
                     gettimeofday(&end, NULL);
                     
                     // Calculate RTT
-                    double rtt = (double)(end.tv_sec - start.tv_sec) * 1000.0 + 
-                                (double)(end.tv_usec - start.tv_usec) / 1000.0;
+                    double rtt = (double)(end.tv_sec - start.tv_sec) * 1000.0 + (double)(end.tv_usec - start.tv_usec) / 1000.0;
                     
                     // Print response
                     if (received_count == 0) {
@@ -194,13 +193,13 @@ int main(int argc, char *argv[])
             else if (result == 0)
             {
                 // Timeout
-                printf("* ");
+                printf("*");
                     
             }
-            else
-            {
-                perror("poll failed");
-            }
+            // else
+            // {
+            //     perror("poll failed");
+            // }
         }
         
         printf("\n");
