@@ -26,8 +26,8 @@ unsigned short calculate_checksum(void *data, unsigned int bytes) {
     return (~((unsigned short)total_sum));
 }
 
-// TCP Pseudo-header for checksum calculation
-struct pseudo_header {
+// struct for header 
+    struct pseudo_header {
     u_int32_t source_address;
     u_int32_t dest_address;
     u_int8_t placeholder;
@@ -37,7 +37,7 @@ struct pseudo_header {
 
 
 void tcp_syn_scan(char *target_ip) {
-    int sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
+    int sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);  //row cause we build the header 
     if (sock < 0) {
         perror("Socket Error");
         return;
@@ -45,29 +45,29 @@ void tcp_syn_scan(char *target_ip) {
 
     // Tell IP layer not to prepend its own header
     int one = 1;
-    if (setsockopt(sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) {
+    if (setsockopt(sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) { //setsock- defines the behavior of the socket .ip_hdrincl turns off automatic header of ip ("IP_HDRINCL") 
         perror("Setsockopt Error");
         return;
     }
 
-    struct sockaddr_in dest;
+    struct sockaddr_in dest; // the struct of the input in the sock 
     dest.sin_family = AF_INET;
-    inet_pton(AF_INET, target_ip, &dest.sin_addr);
+    inet_pton(AF_INET, target_ip, &dest.sin_addr); //sin_addr pointer like target_ip - and cast to binary from ascii
 
     printf("Scanning TCP ports on %s...\n", target_ip);
 
-    for (int port = 1; port <= 65535; port++) {
+    for (int port = 1; port <= 65535; port++) { // for loop for 65535 optional ports 
         char packet[4096];
-        memset(packet, 0, 4096);
+        memset(packet, 0, 4096); // initialize the buffer "packet"
 
         struct iphdr *ip = (struct iphdr *)packet;
-        struct tcphdr *tcp = (struct tcphdr *)(packet + sizeof(struct iphdr));
+        struct tcphdr *tcp = (struct tcphdr *)(packet + sizeof(struct iphdr));  // the next addr for tcp (after ip in network)
 
-        // Fill IP Header
-        ip->ihl = 5;
+        // IP Header
+        ip->ihl = 5; //internet header length
         ip->version = 4;
         ip->tos = 0;
-        ip->tot_len = sizeof(struct iphdr) + sizeof(struct tcphdr);
+        ip->tot_len = sizeof(struct iphdr) + sizeof(struct tcphdr); // header + paylod(data)
         ip->id = htons(54321);
         ip->frag_off = 0;
         ip->ttl = 64;
@@ -76,7 +76,7 @@ void tcp_syn_scan(char *target_ip) {
         ip->daddr = dest.sin_addr.s_addr;
         ip->check = calculate_checksum(ip, sizeof(struct iphdr));
 
-        // Fill TCP Header - SYN Packet 
+        // TCP Header - SYN Packet 
         tcp->source = htons(12345);
         tcp->dest = htons(port);
         tcp->seq = 0;
@@ -94,46 +94,48 @@ void tcp_syn_scan(char *target_ip) {
         psh.protocol = IPPROTO_TCP;
         psh.tcp_length = htons(sizeof(struct tcphdr));
         
-        char *pseudogram = malloc(sizeof(struct pseudo_header) + sizeof(struct tcphdr));
+        char *pseudogram = malloc(sizeof(struct pseudo_header) + sizeof(struct tcphdr)); // save memory (as global)
         memcpy(pseudogram, &psh, sizeof(struct pseudo_header));
         memcpy(pseudogram + sizeof(struct pseudo_header), tcp, sizeof(struct tcphdr));
-        tcp->check = calculate_checksum(pseudogram, sizeof(struct pseudo_header) + sizeof(struct tcphdr));
+        tcp->check = calculate_checksum(pseudogram, sizeof(struct pseudo_header) + sizeof(struct tcphdr)); // set the checksum with the right info  
         free(pseudogram);
 
-        sendto(sock, packet, ip->tot_len, 0, (struct sockaddr *)&dest, sizeof(dest));
 
-        // Listen for response (SYN-ACK or RST) [cite: 186, 187, 188]
+        //FINNALY sending the message
+        sendto(sock, packet, ip->tot_len, 0, (struct sockaddr *)&dest, sizeof(dest)); 
+
+        // Listen for response (SYN-ACK or RST) 
         struct pollfd pfd;
         pfd.fd = sock;
         pfd.events = POLLIN;
-        if (poll(&pfd, 1, 100) > 0) { // 100ms timeout for scanning speed
+        if (poll(&pfd, 1, 100) > 0) { 
             char buffer[4096];
-            struct sockaddr_in from;
+            struct sockaddr_in from; // 
             socklen_t len = sizeof(from);
-            while (recvfrom(sock, buffer, sizeof(buffer), MSG_DONTWAIT, (struct sockaddr *)&from, &len) > 0) {
-                struct iphdr *recv_ip = (struct iphdr *)buffer;
-                if (recv_ip->protocol == IPPROTO_TCP) {
-                    struct tcphdr *recv_tcp = (struct tcphdr *)(buffer + (recv_ip->ihl * 4));
+            while (recvfrom(sock, buffer, sizeof(buffer), MSG_DONTWAIT, (struct sockaddr *)&from, &len) > 0) { // whike there is no error in the socket data 
+                struct iphdr *recv_ip = (struct iphdr *)buffer;  // struct for the receive 
+                if (recv_ip->protocol == IPPROTO_TCP) { // if by protocol tcp - continue  
+                    struct tcphdr *recv_tcp = (struct tcphdr *)(buffer + (recv_ip->ihl * 4)); // the all 32 bites 
 
-                    // בדיקת אימות קריטית: האם הפורט שקיבלנו הוא הפורט שסרקנו?
-                    if (ntohs(recv_tcp->source) == port) {
-                        if (recv_tcp->syn == 1 && recv_tcp->ack == 1) { // SYN-ACK [cite: 187]
+                    // if this port is the port that we saked for 
+                    if (ntohs(recv_tcp->source) == port) { // changes the order of the bytes to the correct form for the computer and checks if this is the expected port.
+                        if (recv_tcp->syn == 1 && recv_tcp->ack == 1) { // SYN-ACK 
                             printf("Port %d is OPEN (TCP)\n", port);
                         }
                         
-                        // שליחת RST חזרה (דרישת סעיף 189) 
+                        // send rst
                         tcp->syn = 0;
                         tcp->rst = 1;
-                        tcp->check = 0; // יש לחשב checksum מחדש לפני השליחה
+                        tcp->check = 0; 
                         sendto(sock, packet, ip->tot_len, 0, (struct sockaddr *)&dest, sizeof(dest));
                         break; 
                     }
                 }
             }
         }
-    } // סגירת לולאת ה-for
+    } 
     close(sock);
-} // סגירת הפונקציה
+} 
 
 void udp_scan(char *target_ip) {
     int udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -156,17 +158,18 @@ void udp_scan(char *target_ip) {
             continue;
         } 
 
+        //for the resp
         struct pollfd pfds[2];
         pfds[0].fd = icmp_sock;
         pfds[0].events = POLLIN;
         pfds[1].fd = udp_sock;
         pfds[1].events = POLLIN;
 
-        // המתנה לתגובה (Timeout של 100ms לסריקה מהירה)
+        // wait to response
         int res = poll(pfds, 2, 100);
 
         if (res > 0) {
-            // אם קיבלנו תגובה ב-UDP Socket, הפורט פתוח
+            // if we got a response 
             if (pfds[1].revents & POLLIN) {
                 char buffer[1024];
                 struct sockaddr_in from;
@@ -175,11 +178,9 @@ void udp_scan(char *target_ip) {
                 
                 printf("Port %d is OPEN (UDP)\n", port);
             }
-            // אם pfds[0] (ICMP) קיבל אירוע, הפורט סגור לפי המטלה
-            // אין צורך בהדפסה כאן כי המטלה דורשת להדפיס רק פתוחים.
+            
         }
-        // אם res == 0 (Timeout), המטלה מנחה להחשיב כסגור/מסונן
-        // לכן גם כאן אין הדפסה.
+        
     }
 
     close(udp_sock);
@@ -191,11 +192,13 @@ int main(int argc, char *argv[]) {
     char *type = NULL;
     int opt;
 
-    // Use getopt for flags -a and -t 
+    // Use getopt for flags -a and -t  
     while ((opt = getopt(argc, argv, "a:t:")) != -1) {
         switch (opt) {
-            case 'a': target_ip = optarg; break;
-            case 't': type = optarg; break;
+            case 'a': target_ip = optarg; 
+            break;
+            case 't': type = optarg; 
+            break;
         }
     }
 
@@ -204,8 +207,13 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (strcmp(type, "TCP") == 0) tcp_syn_scan(target_ip);
-    else if (strcmp(type, "UDP") == 0) udp_scan(target_ip);
-    
+    if (strcmp(type, "TCP") == 0)
+    {
+        tcp_syn_scan(target_ip);
+    }
+    else if (strcmp(type, "UDP") == 0)
+    { 
+        udp_scan(target_ip);
+    }
     return 0;
 }

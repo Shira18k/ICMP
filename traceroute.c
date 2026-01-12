@@ -9,7 +9,7 @@
 #include <netinet/ip_icmp.h>
 #include <netinet/ip.h>
 
-#define PACKET_SIZE 4096
+
 
 // Calculate checksum
 unsigned short int calculate_checksum(void *data, unsigned int bytes) 
@@ -34,13 +34,15 @@ unsigned short int calculate_checksum(void *data, unsigned int bytes)
     return (~((unsigned short int)total_sum));
 }
 
+
 int main(int argc, char *argv[])
 {
     int ttl = 1;
     int opt;
     char *ip_addr = NULL;
     
-    while((opt = getopt(argc, argv, "a:")) != -1)
+    // For flags 
+    while((opt = getopt(argc, argv, "a:")) != -1) 
     {
         switch(opt)
         {
@@ -58,23 +60,23 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    // Create raw socket
-    int sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    // Create raw socket 
+    int sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP); // For sending 
     if(sock < 0)
     {
         perror("Socket creation failed");
         exit(1);
     }
 
-    int one = 1;
-    if (setsockopt(sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) {
+    int one = 1; // To say that I want the "IP_HDRINCL" on (by 1)
+    if (setsockopt(sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) { // Defined auto ip hddr off (by IP_HDRINCL)
         perror("setsockopt IP_HDRINCL failed");
         close(sock);
         exit(1);
     }
 
     struct sockaddr_in dest_in;
-    memset(&dest_in, 0, sizeof(dest_in));
+    memset(&dest_in, 0, sizeof(dest_in)); // initialize 
     dest_in.sin_family = AF_INET;
     
     // Translate the ip_addr to the required format
@@ -85,9 +87,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    printf("traceroute to %s, 30 hops max\n", inet_ntoa(dest_in.sin_addr));
+    printf("traceroute to %s, 30 hops max\n", inet_ntoa(dest_in.sin_addr)); // until ttl = 30 acordding the assing 
 
-    int recv_sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    int recv_sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP); // For resp 
     if(recv_sock < 0)
     {
         perror("Receive socket creation failed");
@@ -97,12 +99,12 @@ int main(int argc, char *argv[])
 
     // Build the reply structure
     struct pollfd pfd;
-    pfd.fd = sock;
+    pfd.fd = sock; // Our 
     pfd.events = POLLIN;
     int timeout = 1000;
 
     // Define the time structure for the rtt
-    struct timeval start, end;
+    struct timeval start, end; //for calculate rtt 
 
     int reached_destination = 0;
 
@@ -110,20 +112,21 @@ int main(int argc, char *argv[])
     while (ttl <= 30 && !reached_destination) 
     {   
         // Set TTL for this hop
-        if (setsockopt(sock, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)) < 0) {
+        if (setsockopt(sock, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)) < 0) { // While the result 0  -> standing in the conditions
             perror("Failed to set TTL");
             break;
         }
 
-        printf("%2d  ", ttl);
-        int received_count = 0;
+        printf("%2d  ", ttl); // ttl on 2 places (>=30)
+        int received_count = 0; // For 
         
         // Send 3 similar packages
         for (int i = 0; i < 3; i++) 
         {
-            char packet[PACKET_SIZE];
-            memset(packet, 0, PACKET_SIZE);
-            struct iphdr *ip_header = (struct iphdr *)packet;
+            char packet[4096]; // Build the packet for sending 
+            memset(packet, 0, sizeof(packet)); // initialize 
+
+            struct iphdr *ip_header = (struct iphdr *)packet; // "HOME MADE"
             ip_header->ihl = 5;
             ip_header->version = 4;
             ip_header->tos = 0;
@@ -151,17 +154,17 @@ int main(int argc, char *argv[])
             // Set the starting point of current rtt
             gettimeofday(&start, NULL);
             
-            if (sendto(sock, packet, ip_header->tot_len, 0, (struct sockaddr *)&dest_in, sizeof(dest_in)) < 0) {
+            if (sendto(sock, packet, ip_header->tot_len, 0, (struct sockaddr *)&dest_in, sizeof(dest_in)) < 0) { // the send not succeed - else good 
                 printf("* ");
                 continue;
             }
 
             int result = poll(&pfd, 1, timeout); 
             
-            // Wait for the response
+            // Wait for the response - if exist 
             if (result > 0)
             {
-                char buffer[1024];
+                char buffer[1024]; // For the resp 
                 struct sockaddr_in from_addr;
                 socklen_t addr_len = sizeof(from_addr);
 
@@ -170,6 +173,7 @@ int main(int argc, char *argv[])
                 
                 if(bytes_received > 0)
                 {
+                    // Set the ending point of current rtt
                     gettimeofday(&end, NULL);
                     
                     // Calculate RTT
@@ -196,10 +200,7 @@ int main(int argc, char *argv[])
                 printf("*");
                     
             }
-            // else
-            // {
-            //     perror("poll failed");
-            // }
+           
         }
         
         printf("\n");

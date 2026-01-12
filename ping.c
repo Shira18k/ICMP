@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
     int packages_transmitted = 0;
     int pakages_recieved = 0;
     double max_rtt, sum_rtt = 0;
-    double min_rtt = 999.0; // big num 
+    double min_rtt = 999.0; // A big num -be able to update an amaller one 
     double final_runtime = 0;
     
     void display_statistics()
@@ -54,12 +54,13 @@ int main(int argc, char *argv[])
     }
 
     //SIGNAL IMPLEMENTATION
-    signal(SIGINT, display_statistics);
+    signal(SIGINT, display_statistics); // Do display_statistic when press on 'Ctrl+C'
 
     //Create a timeeval structure to measure time 
     struct timeval s_runtime, e_runtime;
     gettimeofday(&s_runtime, NULL);
 
+    // Flags part 
     while((opt = getopt(argc,argv, "a:c:f")) != -1)
     {
         switch(opt)
@@ -87,10 +88,11 @@ int main(int argc, char *argv[])
         perror("Socket creation failed");
         exit(1);
     }
-    //The destination address structureS
-    struct sockaddr_in dest_in;
+    
+    struct sockaddr_in dest_in; //The destination address structures
     
     dest_in.sin_family = AF_INET;
+
     //Here will be the argument that the user will send
 
     //Translate the ip_addr to the required format
@@ -99,8 +101,7 @@ int main(int argc, char *argv[])
         perror("Invalid");
         exit(1);
     }
-    dest_in.sin_port = 0;
-    //Final address inside the structureS
+    dest_in.sin_port = 0; //Final address inside the structures
 
     //Create a reply structure
     struct pollfd pfd;
@@ -112,7 +113,7 @@ int main(int argc, char *argv[])
     struct timeval start, end;
     
     int count = 0;
-    //While loop
+
     while (count < times_to_run) {
 
         //Create the icmp pakcage template
@@ -123,7 +124,7 @@ int main(int argc, char *argv[])
         icmp.un.echo.id = getpid();  //unique id to identif
         icmp.un.echo.sequence = seq_num;
 
-        icmp.checksum = 0;
+        icmp.checksum = 0; 
         //Caclulate the checksum per package
         icmp.checksum = calculate_checksum(&icmp, sizeof(struct icmphdr));
 
@@ -145,13 +146,15 @@ int main(int argc, char *argv[])
             struct sockaddr_in from_addr;
             socklen_t addr_len = sizeof(from_addr);
 
+            // Casting for the addr of the buffer to pointer on the IP struct 
+            // Means that the inf in the addr of the buffer like the ip struct
             int bytes_received = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr *)&from_addr, &addr_len); // put the inf in the buffer 
             if(bytes_received > 0)
             {
                 // package recieved +1
                 pakages_recieved++; 
-                // Casting for the addr of the buffer to pointer on the IP struct 
-                // Means that the inf in the addr of the buffer like the ip struct
+
+                
                 
                 // rtt
                 double rtt = (double)(end.tv_sec - start.tv_sec) * 1000.0 + (double)(end.tv_usec-start.tv_usec)/ 1000.0;
@@ -177,7 +180,7 @@ int main(int argc, char *argv[])
         // Just in the end 
         seq_num++;
         count++;
-        // the "sleep" part by flag f 
+        // The "sleep" part by flag f 
         if (flood_mode == 0 && count < times_to_run) 
         {
             sleep(1);
